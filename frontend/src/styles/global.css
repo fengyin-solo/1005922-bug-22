@@ -33,5 +33,20 @@ body { margin: 0; background: #f6f8fb; color: #1f2937; }
 .link { border: none; background: none; color: var(--brand); cursor: pointer; padding: 0; }
 .page-foot { display: flex; justify-content: space-between; margin-top: 8px; font-size: 12px; color: var(--muted); }
 .error-text { color: #b42318; }
+.info-text { color: #067647; }
 .status-legend { display: flex; flex-wrap: wrap; gap: 12px; margin: 0 0 10px; font-size: 12px; color: var(--muted); }
 .legend-item { background: #eef2f7; border-radius: 999px; padding: 2px 10px; }
+
+/* 汇流箱域：对账行、异常读数标红、详情面板 */
+.domain-line { display: flex; flex-wrap: wrap; gap: 8px 24px; margin: 0 0 10px; font-size: 12px; color: var(--muted); }
+.reconcile.ok { color: #067647; }
+.reconcile.bad { color: #b42318; font-weight: 600; }
+.cell-bad { color: #b42318; font-weight: 600; background: #fef3f2; }
+.clickable-rows tbody tr { cursor: pointer; }
+.row-selected td { background: #eff4ff; }
+.detail-panel { margin-top: 12px; background: #fff; border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; }
+.detail-title { margin: 0 0 8px; font-size: 14px; }
+.detail-subtitle { margin: 12px 0 6px; font-size: 13px; }
+.detail-grid { display: flex; flex-wrap: wrap; gap: 6px 24px; font-size: 13px; }
+.detail-list { margin: 0; padding-left: 18px; font-size: 12px; color: var(--muted); }
+.muted { color: var(--muted); font-size: 12px; }

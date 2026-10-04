@@ -48,6 +48,19 @@ export function saveRows(key: string, rows: EntryRow[]): void {
   }
 }
 
+// 整笔写入：一次把多个模块的改动落库。先写 localStorage 再换缓存，
+// 任何一步写不进去都抛错，内存里的旧状态原样保留，调用方据此整笔回退。
+export function saveAll(next: Record<string, EntryRow[]>): void {
+  if (typeof window !== 'undefined' && window.localStorage) {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
+  }
+  cache = next
+}
+
+export function cloneRows<T>(value: T): T {
+  return clone(value)
+}
+
 export function resetRows(key: string): EntryRow[] {
   const rows = clone(SEED_ROWS[key] ?? [])
   saveRows(key, rows)

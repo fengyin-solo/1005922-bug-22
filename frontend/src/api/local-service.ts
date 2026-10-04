@@ -1,6 +1,27 @@
 import { MODULE_BY_KEY } from '@/data/modules'
 import { allRows, listRows, resetRows, saveRows } from '@/data/local-store'
 import type { ActionResult, EntryRow, ModuleMeta, OverviewResult, PageResult } from '@/data/types'
+import {
+  confirmPatrolReview,
+  ensureCombinerMigration,
+  registerTempRise,
+  resetCombinerDomain,
+  scheduleInsulation,
+  writeOffCombiner,
+} from './combiner-service'
+
+// 汇流箱域操作在 combiner-service.ts 实现，这里统一出口，页面仍只从 local-service 读写。
+export {
+  changeFuseSpec,
+  combinerDetail,
+  combinerReconciliation,
+  conversionLineInfo,
+  registerTempRise,
+  scheduleInsulation,
+  switchConversionLine,
+  writeOffCombiner,
+} from './combiner-service'
+export type { CombinerDetail, Reconciliation } from './combiner-service'
 
 // 会写进数据的「往回走」动作：命中就把这条记录标成异常态，看板上能一眼看出来。
 const NEGATIVE_ACTIONS = ['撤销', '作废', '拒绝', '驳回', '停用', '忽略', '下线', '回滚']
@@ -24,12 +45,34 @@ export function filterRows(rows: EntryRow[], filters: Record<string, string>): E
 }
 
 export function listEntries(key: string, filters: Record<string, string> = {}): PageResult {
+  if (key === 'combiner') {
+    ensureCombinerMigration()
+  }
   const matched = filterRows(listRows(key), filters)
   return { items: matched, total: matched.length, page: 1, size: matched.length }
 }
 
 export function runAction(key: string, id: number, action: string): ActionResult {
   const meta = moduleMeta(key)
+  // 汇流箱的流转走域内规则：越级驳回、同源校验、同笔销账都在 combiner-service 里。
+  if (key === 'combiner') {
+    if (action === '确认恢复') {
+      return writeOffCombiner(id, '值班管理员')
+    }
+    if (action === '登记温升') {
+      return registerTempRise(id, 75, '人工巡检', '值班管理员')
+    }
+    if (action === '安排绝缘检测') {
+      return scheduleInsulation(id, 0.4, '人工巡检', '值班管理员')
+    }
+  }
+  // 巡检台账里的汇流箱销账复核件，确认完成时同笔回写汇流箱标记的复核状态。
+  if (key === 'patrol' && action === '确认完成') {
+    const handled = confirmPatrolReview(id)
+    if (handled) {
+      return handled
+    }
+  }
   const target = meta.actionTargets[action]
   if (!target) {
     return { ok: false, message: `${meta.entity}没有登记「${action}」这个动作` }
@@ -58,6 +101,9 @@ export function runAction(key: string, id: number, action: string): ActionResult
 
 export function resetModule(key: string): PageResult {
   resetRows(key)
+  if (key === 'combiner') {
+    resetCombinerDomain()
+  }
   return listEntries(key)
 }
 

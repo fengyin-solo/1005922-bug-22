@@ -68,4 +68,17 @@ npm run build
 - 字段、状态、动作与流转目标集中在 `frontend/src/data/modules.ts`；示例数据在
   `frontend/src/data/seed.ts`。
 - 状态流转只允许在 `local-service.ts` 里改，页面组件不做业务判断。
+- 汇流箱的域规则单列在 `frontend/src/api/combiner-service.ts`（纯规则函数在
+  `frontend/src/data/combiner-rules.ts`）：异常标记成册（`combiner_mark`）、换算线设置成册
+  （`combiner_setting`），销账时箱体温度/绝缘阻值/箱体状态同笔写回，写不进去整笔回退；
+  销账结论落巡检复核台账，两处在办台数可对账。换算比例现行版本为 `v2-2026`（比例 0.88），
+  改线后已换算结果照新线重算，老记录按当时版本留档。
 - 想回到初始数据：清掉浏览器里 `pv-plant-ops:entries` 这一项，或调用 `resetModule(模块)`。
+
+## 测试
+
+```bash
+cd frontend
+npm run test        # vitest：汇流箱域规则与 local-service 集成
+npm run typecheck   # vue-tsc
+```
