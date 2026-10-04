@@ -48,6 +48,16 @@ export function saveRows(key: string, rows: EntryRow[]): void {
   }
 }
 
+// 一次事务写多个模块：先落 localStorage 再换缓存，写不进去就整笔回退，
+// 不会出现汇流箱清了、巡检台账没记上这种清到一半的状态。
+export function saveModuleRows(batch: Record<string, EntryRow[]>): void {
+  const next = { ...allRows(), ...batch }
+  if (typeof window !== 'undefined' && window.localStorage) {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
+  }
+  cache = next
+}
+
 export function resetRows(key: string): EntryRow[] {
   const rows = clone(SEED_ROWS[key] ?? [])
   saveRows(key, rows)

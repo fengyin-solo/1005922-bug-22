@@ -7,6 +7,7 @@
       </div>
       <div class="page-actions">
         <button class="btn primary" type="button" @click="openCreate">登记直流汇流箱</button>
+        <button class="btn" type="button" @click="reconvert">换算改线重算</button>
         <button class="btn" type="button" @click="exportRows">导出汇流箱清单</button>
       </div>
     </header>
@@ -22,12 +23,20 @@
       <span v-for="item in statusSummary" :key="item.status" class="legend-item">
         {{ item.status }}：{{ item.count }}
       </span>
+      <span class="legend-item" :class="{ 'legend-warn': !recon.match }">
+        在办 {{ recon.openBoxes }} 台 · 已销账 {{ recon.cleared }} 台 ↔ 复核台账 {{ recon.ledger }} 条（待复核 {{ recon.pendingReview }}）
+        {{ recon.match ? '· 两处对得上' : '· 两处对不上，请核查' }}
+      </span>
     </p>
 
     <form class="filter-bar" @submit.prevent="reload">
       <label v-for="field in filterFields" :key="field" class="filter-item">
         <span>{{ field }}</span>
         <input v-model="filters[field]" :placeholder="`按${field}检索`" />
+      </label>
+      <label class="filter-item">
+        <span>当前操作人</span>
+        <input v-model="operator" placeholder="熔断器变更只认本方阵专责" />
       </label>
       <button class="btn" type="submit">查询</button>
       <button class="btn ghost" type="button" @click="resetFilters">重置条件</button>
@@ -43,7 +52,13 @@
       </thead>
       <tbody>
         <tr v-for="row in rows" :key="String(row.id)">
-          <td v-for="column in columns" :key="column">{{ row[column] ?? '—' }}</td>
+          <td
+            v-for="column in columns"
+            :key="column"
+            :class="{ 'cell-abnormal': isAbnormalCell(row, column) }"
+          >
+            {{ displayCell(row, column) }}
+          </td>
           <td>{{ row.status }}</td>
           <td class="row-actions">
             <button
@@ -55,6 +70,7 @@
             >
               {{ action }}
             </button>
+            <button class="link" type="button" @click="changeFuse(row)">变更熔断器规格</button>
           </td>
         </tr>
         <tr v-if="!rows.length">
@@ -65,6 +81,7 @@
 
     <footer class="page-foot">
       <span>共 {{ total }} 条汇流箱记录</span>
+      <span v-if="notice" class="notice-text">{{ notice }}</span>
       <span v-if="errorMessage" class="error-text">{{ errorMessage }}</span>
     </footer>
   </section>
@@ -74,30 +91,75 @@
 import { computed, onMounted, ref } from 'vue'
 
 import {
+  combinerLedgerRecon,
   downloadEntries,
   listEntries,
   moduleMeta,
-  runAction as applyAction,
+  readingFlags,
+  reconvertCombinerReadings,
+  runCombinerAction,
+  summarizeAnomalies,
+  updateFuseSpec,
 } from '@/api/local-service'
+import type { LedgerRecon } from '@/api/local-service'
 import type { EntryRow } from '@/data/types'
+import { useSessionStore } from '@/stores/session'
 
 const meta = moduleMeta('combiner')
-const columns = ["汇流箱编号", "所属方阵", "接入组串数", "熔断器规格", "防雷模块", "箱体温度", "绝缘阻值", "箱体状态"]
-const actions = ["登记温升", "安排绝缘检测", "确认恢复"]
-const statuses = ["正常", "温度偏高", "绝缘异常", "已停用"]
-const stats = [{"label": "在运汇流箱", "value": 0}, {"label": "温度偏高台数", "value": 0}, {"label": "绝缘异常台数", "value": 0}]
+const columns = [...meta.fields, '换算结果', '在办异常']
+const actions = ['登记温升', '安排绝缘检测', '确认恢复']
+const statuses = meta.statuses
+
+const session = useSessionStore()
+const operator = computed({
+  get: () => session.operator,
+  set: (value: string) => session.setOperator(value),
+})
 
 const rows = ref<EntryRow[]>([])
 const total = ref(0)
 const errorMessage = ref('')
+const notice = ref('')
 const filters = ref<Record<string, string>>({})
-const filterFields = columns.slice(0, 3)
+const filterFields = meta.fields.slice(0, 3)
+const recon = ref<LedgerRecon>({ openBoxes: 0, cleared: 0, ledger: 0, pendingReview: 0, match: true })
+
+const stats = computed(() => [
+  { label: '在运汇流箱', value: rows.value.filter((row) => row.status !== '已停用').length },
+  { label: '温度偏高台数', value: rows.value.filter((row) => row.status === '温度偏高').length },
+  { label: '绝缘异常台数', value: rows.value.filter((row) => row.status === '绝缘异常').length },
+])
 const statusSummary = computed(() =>
   statuses.map((status: string) => ({
     status,
     count: rows.value.filter((row) => String(row.status) === status).length,
   })),
 )
+
+function displayCell(row: EntryRow, column: string): string {
+  if (column === '在办异常') {
+    return summarizeAnomalies(row)
+  }
+  if (column === '换算结果') {
+    const cached = String(row['换算结果'] ?? '')
+    if (!cached) {
+      return '—'
+    }
+    return `${cached}（${String(row['换算比例版本'] || 'v1')}）`
+  }
+  const value = row[column]
+  return value === undefined || value === '' ? '—' : String(value)
+}
+
+// 有在办异常的读数格标红；销账后读数被同笔复位，红格自然消掉，
+// 旧读数不会再显示成正常。
+function isAbnormalCell(row: EntryRow, column: string): boolean {
+  const flags = readingFlags(row)
+  if (column === '箱体温度') return flags.temp
+  if (column === '绝缘阻值') return flags.insulation
+  if (column === '箱体状态') return flags.temp || flags.insulation
+  return false
+}
 
 function resetFilters() {
   filters.value = {}
@@ -114,11 +176,42 @@ function openCreate() {
 
 function runAction(action: string, row: EntryRow) {
   errorMessage.value = ''
-  const result = applyAction(meta.key, Number(row.id), action)
+  notice.value = ''
+  const result = runCombinerAction(Number(row.id), action, session.operator)
   if (!result.ok) {
     errorMessage.value = result.message
     return
   }
+  notice.value = result.message
+  reload()
+}
+
+function changeFuse(row: EntryRow) {
+  errorMessage.value = ''
+  notice.value = ''
+  const code = String(row['汇流箱编号'] ?? row.id)
+  const next = window.prompt(`变更 ${code} 的熔断器规格（只归本方阵专责管）`, String(row['熔断器规格'] ?? ''))
+  if (next === null) {
+    return
+  }
+  const result = updateFuseSpec(Number(row.id), next, session.operator)
+  if (!result.ok) {
+    errorMessage.value = result.message
+    return
+  }
+  notice.value = result.message
+  reload()
+}
+
+function reconvert() {
+  errorMessage.value = ''
+  notice.value = ''
+  const result = reconvertCombinerReadings()
+  if (!result.ok) {
+    errorMessage.value = result.message
+    return
+  }
+  notice.value = result.message
   reload()
 }
 
@@ -128,6 +221,7 @@ function reload() {
     const payload = listEntries(meta.key, filters.value)
     rows.value = payload.items
     total.value = payload.total
+    recon.value = combinerLedgerRecon()
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : '汇流箱列表读取失败'
   }

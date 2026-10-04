@@ -68,4 +68,9 @@ npm run build
 - 字段、状态、动作与流转目标集中在 `frontend/src/data/modules.ts`；示例数据在
   `frontend/src/data/seed.ts`。
 - 状态流转只允许在 `local-service.ts` 里改，页面组件不做业务判断。
+- 汇流箱有自己的一套领域规则，收在 `frontend/src/api/combiner-service.ts`：销账（确认恢复）
+  把箱体温度、绝缘阻值、箱体状态写进同一笔，并连同巡检复核台账一起落库，写不进去就整笔回退；
+  重复提交只认头一回的处理时间。已安排绝缘检测的箱子不许再记温升（越级驳回并校验同源），
+  熔断器规格只归本方阵专责管。换算比例版本在 `frontend/src/data/conversion.ts` 统一权衡，
+  改线后已换算的结果照新线重算，老记录按当时标准留档。
 - 想回到初始数据：清掉浏览器里 `pv-plant-ops:entries` 这一项，或调用 `resetModule(模块)`。

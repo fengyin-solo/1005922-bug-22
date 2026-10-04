@@ -1,6 +1,19 @@
+import { runCombinerAction } from '@/api/combiner-service'
 import { MODULE_BY_KEY } from '@/data/modules'
 import { allRows, listRows, resetRows, saveRows } from '@/data/local-store'
 import type { ActionResult, EntryRow, ModuleMeta, OverviewResult, PageResult } from '@/data/types'
+
+// 汇流箱的领域规则（销账事务、同源校验、专责校验、换算重算、台账对账）在 combiner-service 里，
+// 页面直接用这几个函数，不走下面的通用流转。
+export {
+  combinerLedgerRecon,
+  readingFlags,
+  reconvertCombinerReadings,
+  runCombinerAction,
+  summarizeAnomalies,
+  updateFuseSpec,
+} from '@/api/combiner-service'
+export type { LedgerRecon } from '@/api/combiner-service'
 
 // 会写进数据的「往回走」动作：命中就把这条记录标成异常态，看板上能一眼看出来。
 const NEGATIVE_ACTIONS = ['撤销', '作废', '拒绝', '驳回', '停用', '忽略', '下线', '回滚']
@@ -29,6 +42,10 @@ export function listEntries(key: string, filters: Record<string, string> = {}): 
 }
 
 export function runAction(key: string, id: number, action: string): ActionResult {
+  // 汇流箱有自己的一套流转规则，通用逻辑管不了，转给领域服务。
+  if (key === 'combiner') {
+    return runCombinerAction(id, action, '值班管理员')
+  }
   const meta = moduleMeta(key)
   const target = meta.actionTargets[action]
   if (!target) {
